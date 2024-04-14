@@ -1,3 +1,4 @@
+import express from 'express';
 import S3 from 'aws-sdk/clients/s3.js';
 import Logger from './utils/Logger.js';
 import { getS3Url } from './utils/s3.js';
@@ -17,40 +18,37 @@ class Server {
   async listen(callback) {
     this.#callback = callback
 
-    const listObjectsV2Params = {
-      Bucket: S3_BUCKET,
-      Prefix: 'requests/',
-      StartAfter: 'requests/',
-    };
+    const app = express();
 
-    let objectsInProcessing = [];
+    app.use(express.json());
 
-    while(true) {
+    app.post('/', async (req, res) => {
       try {
         const startTime = new Date();
-        const { Contents: objects } = await this.#s3.listObjectsV2(listObjectsV2Params).promise();
 
-        const objectsToProcess = objects.filter((o) => !objectsInProcessing.includes(JSON.stringify(o)));
-        objectsInProcessing = objects.map((o) => JSON.stringify(o));
+        const data = req.body;
+        const object = {
+          Key: data.key,
+          Size: data.size,
+          LastModified: new Date(data.timestamp),
+        };
 
-        objectsToProcess.forEach((object) => {
-          (async () => {
-            const logger = new Logger();
-            await this.#processRequest(object, logger, startTime);
+        const logger = new Logger();
+        await this.#processRequest(object, logger, startTime);
 
-            setTimeout(async () => {
-              await this.#s3.deleteObject({ Bucket: S3_BUCKET, Key: object.Key.replace('requests', 'responses') }).promise();
-              logger.info('Deleted response object after 60s timeout.');
-            }, 60000);
+        setTimeout(async () => {
+          await this.#s3.deleteObject({ Bucket: S3_BUCKET, Key: object.Key.replace('requests', 'responses') }).promise();
+          logger.info('Deleted response object after 60s timeout.');
+        }, 60000);
 
-            await this.#s3.deleteObject({ Bucket: S3_BUCKET, Key: object.Key }).promise();
-            logger.info('Deleted request object.');
-          })();
-        });
+        await this.#s3.deleteObject({ Bucket: S3_BUCKET, Key: object.Key }).promise();
+        logger.info('Deleted request object.');
       } catch(e) {
         console.error(e);
       }
-    }
+    })
+
+    app.listen(5000);
   }
 
   async #processRequest(object, logger, startTime) {
