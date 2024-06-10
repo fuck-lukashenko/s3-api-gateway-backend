@@ -1,4 +1,5 @@
 import express from 'express';
+import { gzip } from 'zlib';
 import S3 from 'aws-sdk/clients/s3.js';
 import Logger from './utils/Logger.js';
 import { getS3Url } from './utils/s3.js';
@@ -57,6 +58,14 @@ class Server {
     const requestPathKey = object.Key;
     const responsePathKey = requestPathKey.replace('requests', 'responses');
 
+    const gzipData = async (data) => {
+      const promise = new Promise((resolve, reject) => {
+        gzip(data, (error, buffer) => error ? reject(error) : resolve(buffer));
+      });
+
+      return await promise;
+    };
+
     const thresholdSeconds = 30;
     const minAllowedTime = new Date();
     minAllowedTime.setSeconds(minAllowedTime.getSeconds() - thresholdSeconds);
@@ -67,9 +76,10 @@ class Server {
 
       logger.info('Uploading failure response to AWS S3...');
       await this.#s3.upload({
-        Body: Buffer.from(JSON.stringify({ error: message }), 'utf-8'),
+        Body: await gzipData(JSON.stringify({ error: message })),
         Bucket: S3_BUCKET,
         ContentType: 'application/json',
+        ContentEncoding: 'gzip',
         Key: responsePathKey,
       }).promise();
       logger.info('Failed in', (new Date() - startTime).toLocaleString(), 'ms.');
@@ -85,9 +95,10 @@ class Server {
 
       logger.info('Uploading failure response to AWS S3...');
       await this.#s3.upload({
-        Body: Buffer.from(JSON.stringify({ error: message }), 'utf-8'),
+        Body: await gzipData(JSON.stringify({ error: message })),
         Bucket: S3_BUCKET,
         ContentType: 'application/json',
+        ContentEncoding: 'gzip',
         Key: responsePathKey,
       }).promise();
       logger.info('Failed in', (new Date() - startTime).toLocaleString(), 'ms.');
@@ -125,9 +136,10 @@ class Server {
       const response = new Response(async ({ status, headers, data }) => {
         logger.info('Uploading response to AWS S3...');
         await this.#s3.upload({
-          Body: Buffer.from(JSON.stringify({ response: { status, headers, data } }), 'utf-8'),
+          Body: await gzipData(JSON.stringify({ response: { status, headers, data } })),
           Bucket: S3_BUCKET,
           ContentType: 'application/json',
+          ContentEncoding: 'gzip',
           Key: responsePathKey,
         }).promise();
         logger.info('Uploaded response to AWS S3.');
@@ -141,9 +153,10 @@ class Server {
 
       logger.info('Uploading failure response to AWS S3...');
       await this.#s3.upload({
-        Body: Buffer.from(JSON.stringify({ error: 'Failed to process request!' }), 'utf-8'),
+        Body: await gzipData(JSON.stringify({ error: 'Failed to process request!' })),
         Bucket: S3_BUCKET,
         ContentType: 'application/json',
+        ContentEncoding: 'gzip',
         Key: responsePathKey,
       }).promise();
       logger.info('Failed in', (new Date() - startTime).toLocaleString(), 'ms.');

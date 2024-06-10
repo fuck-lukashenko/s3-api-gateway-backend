@@ -16,6 +16,7 @@
     "dotenv": "^16.0.1",
     "express": "^4.19.2",
     "https-proxy-agent": "^5.0.1",
-    "node-color-log": "^10.0.2"
+    "node-color-log": "^10.0.2",
+    "zlib": "^1.0.5"
   }
 }
